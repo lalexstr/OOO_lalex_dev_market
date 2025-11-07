@@ -40,24 +40,30 @@
 ## 🏗️ Архитектура
 
 ```
-┌─────────────────┐
-│  Auth Service   │ ← Центральный сервис аутентификации
-│   (Port 8080)   │
-└────────┬────────┘
-         │
-         ├──────────────┬──────────────┬──────────────┐
-         │              │              │              │
-    ┌────▼────┐   ┌────▼────┐   ┌────▼────┐   ┌────▼────┐
-    │ Product │   │ Project │   │  User   │   │ Contact │
-    │ Service │   │ Service │   │ Service │   │ Service │
-    │  :8081  │   │  :8082  │   │  :8085  │   │  :8084  │
-    └─────────┘   └─────────┘   └─────────┘   └─────────┘
-    
-    ┌─────────────┐
-    │  Portfolio  │
-    │   Service   │
-    │   :8083     │
-    └─────────────┘
+                    ┌─────────────────────┐
+                    │   Auth Service      │ ← Центральный сервис аутентификации
+                    │   (Port 8080)       │   (JWT токены, роли пользователей)
+                    └──────────┬──────────┘
+                               │
+              ┌────────────────┼────────────────┐
+              │                │                │
+    ┌─────────▼─────────┐ ┌───▼────┐ ┌─────────▼─────────┐
+    │ Product Service   │ │ Project│ │  User Service     │
+    │   (Port 8081)     │ │ Service│ │   (Port 8085)      │
+    │ ✅ Middleware     │ │ :8082  │ │ ✅ Middleware      │
+    │ ✅ Auth Client    │ │ ✅ Both│ │ ✅ Auth Client     │
+    └───────────────────┘ └────────┘ └────────────────────┘
+              │                │                │
+              └────────────────┼────────────────┘
+                               │
+              ┌────────────────┼────────────────┐
+              │                │                │
+    ┌─────────▼─────────┐ ┌───▼────┐
+    │ Portfolio Service │ │ Contact │
+    │   (Port 8083)     │ │ Service │
+    │ ✅ Middleware     │ │ :8084   │
+    │ ✅ Auth Client    │ │ ✅ Both │
+    └───────────────────┘ └────────┘
 ```
 
 ### Принципы архитектуры
@@ -163,18 +169,19 @@
 **Управление портфолио**
 
 - CRUD операции с портфолио
-- Публичный доступ (без аутентификации)
+- Публичный просмотр списка портфолио
+- Админская панель для управления (создание, обновление, удаление)
 - Логирование операций
 
 **База данных:** `portfolio.db`
 
 **Основные эндпоинты:**
-- `POST /api/portfolio` - создать портфолио
-- `GET /api/portfolio` - список портфолио
-- `PATCH /api/portfolio/:id` - обновить портфолио
-- `DELETE /api/portfolio/:id` - удалить портфолио
+- `GET /api/portfolio` - список портфолио (публичный)
+- `POST /api/portfolio` - создать портфолио (admin)
+- `PATCH /api/portfolio/:id` - обновить портфолио (admin)
+- `DELETE /api/portfolio/:id` - удалить портфолио (admin)
 
-**Особенность:** Публичный доступ (без аутентификации)
+**Зависимости:** Auth Service (для проверки JWT и роли)
 
 ---
 
@@ -182,9 +189,9 @@
 
 **Обработка контактных запросов**
 
-- Создание контактных запросов
-- Управление статусами запросов
-- Админская панель
+- Создание контактных запросов (публичный доступ)
+- Управление статусами запросов (только для админов)
+- Админская панель с аутентификацией
 - Логирование действий
 
 **База данных:** `contact.db`
@@ -195,6 +202,8 @@
 - `PATCH /api/contact-requests/admin/:id/status` - обновить статус (admin)
 - `DELETE /api/contact-requests/admin/:id` - удалить запрос (admin)
 - `GET /api/logs` - получить логи
+
+**Зависимости:** Auth Service (для проверки JWT и роли)
 
 **Статусы:** `new`, `processed`, `rejected`
 
@@ -387,6 +396,68 @@ curl -X POST http://localhost:8084/api/contact-requests \
   }'
 ```
 
+#### Список контактных запросов (требует admin токен)
+
+```bash
+curl -X GET "http://localhost:8084/api/contact-requests/admin?status=new" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+#### Обновление статуса контактного запроса (требует admin токен)
+
+```bash
+curl -X PATCH http://localhost:8084/api/contact-requests/admin/1/status \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "processed"
+  }'
+```
+
+#### Удаление контактного запроса (требует admin токен)
+
+```bash
+curl -X DELETE http://localhost:8084/api/contact-requests/admin/1 \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+#### Просмотр портфолио (публичный)
+
+```bash
+curl -X GET http://localhost:8083/api/portfolio
+```
+
+#### Создание портфолио (требует admin токен)
+
+```bash
+curl -X POST http://localhost:8083/api/portfolio \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Portfolio Item",
+    "description": "Portfolio Description",
+    "image_url": "https://example.com/image.jpg"
+  }'
+```
+
+#### Обновление портфолио (требует admin токен)
+
+```bash
+curl -X PATCH http://localhost:8083/api/portfolio/1 \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Updated Portfolio Item"
+  }'
+```
+
+#### Удаление портфолио (требует admin токен)
+
+```bash
+curl -X DELETE http://localhost:8083/api/portfolio/1 \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
 ### Полная документация API
 
 Подробная документация по всем эндпоинтам находится в README каждого сервиса:
@@ -515,6 +586,8 @@ docker build -t auth-service .
 |------------|----------|--------------|
 | `PORT` | Порт сервера | `8083` |
 | `DB_PATH` | Путь к БД | `./portfolio.db` |
+| `JWT_SECRET` | Секретный ключ JWT | **Обязательно** |
+| `AUTH_SERVICE_URL` | URL Auth Service | `http://localhost:8080` |
 
 ### Contact Service
 
@@ -523,6 +596,8 @@ docker build -t auth-service .
 | `PORT` | Порт сервера | `8084` |
 | `DB_PATH` | Путь к БД | `./contact.db` |
 | `LOG_LEVEL` | Уровень логирования | `info` |
+| `JWT_SECRET` | Секретный ключ JWT | **Обязательно для admin эндпоинтов** |
+| `AUTH_SERVICE_URL` | URL Auth Service | `http://localhost:8080` |
 
 ### User Service
 
